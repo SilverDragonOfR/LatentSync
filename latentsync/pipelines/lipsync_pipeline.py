@@ -36,6 +36,9 @@ from ..whisper.audio2feature import Audio2Feature
 import tqdm
 import soundfile as sf
 
+from gfpgan import GFPGANer
+from codeformer import CodeFormer
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
@@ -153,6 +156,27 @@ class LipsyncPipeline(DiffusionPipeline):
         latents = rearrange(latents, "b c f h w -> (b f) c h w")
         decoded_latents = self.vae.decode(latents).sample
         return decoded_latents
+    
+    def add_superres(self, latents, upscale_factor, method):
+        if method == "GFPGAN":
+            gfpgan_model = GFPGANer(
+                model_path='https://github.com/TencentARC/GFPGAN/releases/download/v1.3.0/GFPGANv1.3.pth',
+                upscale=upscale_factor,
+                arch='clean',
+                channel_multiplier=2,
+                bg_upsampler=False
+            )
+            _, _, enhanced_latents = gfpgan_model.enhance(latents, paste_back=True)
+            return enhanced_latents
+        elif method == "CodeFormer":
+            codeformer_model = CodeFormer(
+                bg_upsampler=False,
+                upscale=upscale_factor,
+                model_path='./CodeFormer/weights/CodeFormer/codeformer.pth'
+            )
+            enhanced_latents = codeformer_model.enhance(latents)
+        else:
+            return latents
 
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
@@ -304,6 +328,7 @@ class LipsyncPipeline(DiffusionPipeline):
         audio_sample_rate: int = 16000,
         height: Optional[int] = None,
         width: Optional[int] = None,
+        superres: str = "",
         num_inference_steps: int = 20,
         guidance_scale: float = 1.5,
         weight_dtype: Optional[torch.dtype] = torch.float16,
@@ -442,6 +467,12 @@ class LipsyncPipeline(DiffusionPipeline):
 
             # Recover the pixel values
             decoded_latents = self.decode_latents(latents)
+            
+            # Adding super res
+            scale_factor = 0.5
+            if scale_factor < 1:
+                decoded_latents = self.add_superres(decoded_latents, max(5, 1/scale_factor), superres)
+            
             decoded_latents = self.paste_surrounding_pixels_back(
                 decoded_latents, pixel_values, 1 - masks, device, weight_dtype
             )

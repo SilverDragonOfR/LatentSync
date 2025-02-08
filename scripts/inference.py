@@ -84,6 +84,7 @@ def main(config, args):
         weight_dtype=dtype,
         width=config.data.resolution,
         height=config.data.resolution,
+        superres=args.superres
     )
 
 
@@ -97,6 +98,7 @@ if __name__ == "__main__":
     parser.add_argument("--inference_steps", type=int, default=20)
     parser.add_argument("--guidance_scale", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=1247)
+    parser.add_argument("--superres", type=str, default="", choices=["GFPGAN", "CodeFormer", ""])
     args = parser.parse_args()
 
     config = OmegaConf.load(args.unet_config_path)
